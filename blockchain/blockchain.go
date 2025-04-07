@@ -7,11 +7,10 @@ import (
 	"github.com/boltDb/bolt"
 )
 
-const DbFile = "blockchain_%s.Db"
+const DbFile = "blockchain_%s.db"
 const blocksBucket = "blocks"
 
 type Blockchain struct {
-	blocks []*Block
 	tip []byte
 	Db *bolt.DB
 }
@@ -94,7 +93,7 @@ func NewBlockchain() *Blockchain {
 		return nil
 	})
 
-	return &Blockchain{blocks: []*Block{Deserialize(tip)}, tip: tip, Db: Db}
+	return &Blockchain{tip: tip, Db: Db}
 }
 
 func (bc *Blockchain) Iterator() *BlockchainIterator {

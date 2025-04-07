@@ -51,5 +51,6 @@ func init() {
 	bc := blockchain.NewBlockchain()
 	cliHandler = handlers.NewCLIHandler(bc)
 	cliCmd.AddCommand(addBlockCmd)
+	cliCmd.AddCommand(printChainCmd)
 	rootCmd.AddCommand(cliCmd)
 }

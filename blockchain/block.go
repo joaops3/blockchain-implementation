@@ -1,9 +1,7 @@
 package blockchain
 
 import (
-	"blockchain/utils"
 	"bytes"
-	"crypto/sha256"
 	"encoding/gob"
 	"log"
 	"time"
@@ -36,15 +34,7 @@ func NewGenesisBlock() *Block {
 	return NewBlock("Genesis Block", []byte{})
 }
 
-func (b *Block) setHash() {
-	timestamp := utils.IntToHex(b.Timestamp)
-	headers := append([]byte{}, b.PrevBlockHash... )
-	headers = append(headers, b.Data...)
-	headers = append(headers, timestamp...)
-	
-	hash := sha256.Sum256(headers)
-	b.Hash = hash[:]
-}
+
 
 func (b *Block) Serialize() []byte {
 	result := &bytes.Buffer{}
