@@ -3,6 +3,7 @@ package handlers
 import (
 	"blockchain/blockchain"
 	"fmt"
+	"log"
 	"strconv"
 )
 
@@ -14,22 +15,11 @@ func NewCLIHandler(bc *blockchain.Blockchain) *CLIHandler {
 	return &CLIHandler{Bc: bc}
 }
 
-func (cli *CLIHandler) Run(cmd string, args []string) {
-	switch cmd {
-	case "addBlock":
-		if len(args) != 1 {
-			println("Usage: addBlock <data>")
-			return
-		}
-		data := args[0]
-		cli.Bc.AddBlock(data)
-	case "printChain":
-		cli.PrintChain()
-	default:
-		println("Unknown command")
-	}
-
+func (cli *CLIHandler) AddBlock(data string) {
+	cli.Bc.AddBlock(data)
+	fmt.Printf("Bloco adicionado com sucesso: %s\n", data)
 }
+
 
 func (cli *CLIHandler) PrintChain() {
 	bci := cli.Bc.Iterator()
@@ -48,4 +38,42 @@ func (cli *CLIHandler) PrintChain() {
 			break
 		}
 	}
+}
+
+
+func (cli *CLIHandler) GetBalance(address string){
+	if address == "" {
+		fmt.Println("Endereço da carteira não pode ser vazio")
+		return
+	}
+	utxos := cli.Bc.FindUTXO(address)
+
+	balance := 0
+
+
+	for _, output := range utxos {
+		balance += output.Value
+	}
+
+	fmt.Printf("Balance of '%s': %d\n", address, balance)
+}
+
+func (cli *CLIHandler) Send(from, to string, amount int) {
+	if from == "" || to == "" {
+		fmt.Println("Endereço da carteira não pode ser vazio")
+		return
+	}
+	if amount <= 0 {
+		fmt.Println("Valor deve ser maior que zero")
+		return
+	}
+
+	tx := blockchain.NewTransaction(from, to, amount, cli.Bc)
+	if tx == nil {
+		log.Fatalf("Erro ao criar transação")
+		return
+	}
+	cli.Bc.MineBlock([]*blockchain.Transaction{tx})
+	fmt.Printf("Transação enviada de %s para %s no valor de %d\n", from, to, amount)
+	
 }
