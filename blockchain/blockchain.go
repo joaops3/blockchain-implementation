@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
 	"log"
@@ -20,9 +21,6 @@ type BlockchainIterator struct {
 	CurrentHash []byte
 	Db          *bolt.DB
 }
-
-
-
 
 func NewBlockchain(address string) *Blockchain {
 	var tip []byte
@@ -105,6 +103,20 @@ func (b *Blockchain) AddBlock(data string) {
 
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block{
 	return nil
+}
+
+func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
+	prevTXs := make(map[string]Transaction)
+
+	for _, vin := range tx.Vin {
+		prevTX, err := bc.FindTransaction(vin.Txid)
+		if err != nil {
+			log.Panic(err)
+		}
+		prevTXs[hex.EncodeToString(prevTX.ID)] = prevTX
+	}
+
+	tx.Sign(privKey, prevTXs)
 }
 
 func (bc *Blockchain) VerifyTransactions(transaction *Transaction) bool {
@@ -199,14 +211,14 @@ func (b *Blockchain) FindUnspentTransactions(address string) []Transaction {
 
 				}
 
-				if otx.CanBeUnlockedWith(address) {
+				if otx.IsLockedWithKey([]byte(address)) {
 					unspentTxs = append(unspentTxs, *tx)
 				}
 			}
 
 			if tx.IsCoinbase() == false {
 				for _, input := range tx.Vin {
-					if input.CanUnlockOutputWith(address) {
+					if input.UsesKey([]byte(address)) {
 						inTxId := hex.EncodeToString(input.Txid)
 						spentTxo[inTxId] = append(spentTxo[inTxId], input.Vout)
 					}
@@ -233,7 +245,7 @@ func (b *Blockchain) FindUTXO(address string) []TXOutput{
 	for _, tx := range unspentTx {
 		for _, output := range tx.Vout {
 
-			if output.CanBeUnlockedWith(address) {
+			if output.IsLockedWithKey([]byte(address)) {
 				txOutputs = append(txOutputs, output)
 			}
 
@@ -255,7 +267,7 @@ func (bc *Blockchain) FindSpendableOutputs(address string, amount int) (int, map
 			txID := hex.EncodeToString(tx.ID)
 
 			for outIdx, out := range tx.Vout {
-				if out.CanBeUnlockedWith(address) && accumulated < amount {
+				if out.IsLockedWithKey([]byte(address)) && accumulated < amount {
 					accumulated += out.Value
 					unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
 

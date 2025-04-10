@@ -67,13 +67,22 @@ var sendCmd = &cobra.Command{
 	},
 }
 
+var createWalletCmd = &cobra.Command{
+	Use:   "createWallet",
+	Short: "Cria uma nova carteira",
+	Run: func(cmd *cobra.Command, args []string) {
+		cliHandler.CreateWallet()
+	},
+}
+
 
 func init() {
-	bc := blockchain.NewBlockchain(address)
+	bc := blockchain.NewBlockchain("12Q5pnzrQUzun1EtRdjKvbbMou7WUtfSRD6QieC9XTXoE8FQMQJ")
 	cliHandler = handlers.NewCLIHandler(bc)
 	cliCmd.AddCommand(addBlockCmd)
 	cliCmd.AddCommand(printChainCmd)
 	cliCmd.AddCommand(getBalanceCmd)
+	cliCmd.AddCommand(createWalletCmd)
 	cliCmd.AddCommand(sendCmd)
 	cliCmd.PersistentFlags().StringVarP(&address, "address", "a", "", "Endereço da carteira")
 	cliCmd.PersistentFlags().StringVarP(&from, "from", "f", "", "Endereço da carteira")

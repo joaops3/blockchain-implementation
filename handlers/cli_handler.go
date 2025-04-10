@@ -67,13 +67,32 @@ func (cli *CLIHandler) Send(from, to string, amount int) {
 		fmt.Println("Valor deve ser maior que zero")
 		return
 	}
-
-	tx := blockchain.NewTransaction(from, to, amount, cli.Bc)
+	
+	wallets, err := blockchain.NewWallets("node1")
+	if  err != nil {
+			panic(err)
+	}
+	wallet := wallets.GetWallet(from)
+	tx := blockchain.NewTransaction(&wallet, to, amount, cli.Bc)
 	if tx == nil {
 		log.Fatalf("Erro ao criar transação")
 		return
 	}
-	cli.Bc.MineBlock([]*blockchain.Transaction{tx})
+	cbtx := blockchain.NewCoinbaseTX(from, "award")
+	cli.Bc.MineBlock([]*blockchain.Transaction{tx, cbtx})
 	fmt.Printf("Transação enviada de %s para %s no valor de %d\n", from, to, amount)
 	
+}
+
+
+func (cli *CLIHandler) CreateWallet() {
+	node := "node1"
+	wallets, err := blockchain.NewWallets(node)
+	if err != nil {
+		log.Fatalf("Erro ao criar carteiras: %v", err)
+		return
+	}
+	address := wallets.CreateWallet()
+	wallets.SaveToFile(node)
+	fmt.Printf("Endereço da nova carteira: %s\n", address)
 }

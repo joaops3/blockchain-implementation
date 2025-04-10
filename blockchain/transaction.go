@@ -1,10 +1,14 @@
 package blockchain
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"log"
+
+	"github.com/jinzhu/copier"
 )
 
 
@@ -23,12 +27,10 @@ func NewCoinbaseTX(to, data string) *Transaction {
 	txIn := TXInput{
 		Txid: 	[]byte{},
 		Vout: 	-1,
-		ScriptSig: data,
+		Signature: nil,
+		PubKey: []byte(to),
 	}
-	txOut := TXOutput{
-		Value:  50,
-		ScriptPubKey: to,
-	}
+	txOut :=  *NewTXOutput(10, to)
 
 	tx := &Transaction{
 		ID:  nil,
@@ -41,11 +43,11 @@ func NewCoinbaseTX(to, data string) *Transaction {
 }
 
 
-func NewTransaction(from, to string, amount int, bc *Blockchain) *Transaction{
+func NewTransaction(wallet *Wallet, to string, amount int, bc *Blockchain) *Transaction{
 	inputs := []TXInput{}
 	outputs := []TXOutput{}
 
-	acc, validOutputs := bc.FindSpendableOutputs(from, amount)
+	acc, validOutputs := bc.FindSpendableOutputs(string(wallet.PublicKey), amount)
 
 	if acc < amount {
 		log.Panic("Not enough funds")
@@ -63,17 +65,18 @@ func NewTransaction(from, to string, amount int, bc *Blockchain) *Transaction{
 			input := TXInput{
 				Txid:  txid,
 				Vout:  out,
-				ScriptSig: from,
+				PubKey: wallet.PublicKey,
+				Signature: nil,
 			}
 			inputs = append(inputs, input)
 		}
 	}
 
-	outputs = append(outputs, TXOutput{Value: amount, ScriptPubKey: to})
+	outputs = append(outputs, *NewTXOutput(amount, to))
 
 	if acc > amount {
 		// Change
-		outputs = append(outputs, TXOutput{Value: acc - amount, ScriptPubKey: from})
+		outputs = append(outputs,  *NewTXOutput(acc - amount, string(wallet.GetAddress())))
 	}
 
 	tx := &Transaction{
@@ -82,6 +85,7 @@ func NewTransaction(from, to string, amount int, bc *Blockchain) *Transaction{
 		Vout: outputs,
 	}
 	tx.ID = tx.Hash()
+	bc.SignTransaction(tx, DeserializePrivateKey(wallet.PrivateKey))
 	return tx
 }
 
@@ -113,6 +117,34 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 
 	
 	return true
+}
+
+
+func (tx *Transaction) Sign(privKey ecdsa.PrivateKey, prevTXs map[string]Transaction) {
+	if tx.IsCoinbase() {
+		return
+	}
+	txCopy := &Transaction{}
+	err := copier.Copy(txCopy, tx)
+	if err != nil {
+		log.Fatalf("Error copying transaction: %s", err.Error())
+	}
+
+	for inID, vin := range txCopy.Vin {
+		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
+		txCopy.Vin[inID].Signature = nil
+		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
+		txCopy.ID = txCopy.Hash()
+		txCopy.Vin[inID].PubKey = nil
+
+		r, s, err := ecdsa.Sign(rand.Reader, &privKey, txCopy.ID)
+		if err != nil {
+			log.Fatalf("Error signing transaction: %s", err.Error())
+		}
+		signature := append(r.Bytes(), s.Bytes()...)
+
+		tx.Vin[inID].Signature = signature
+	}
 }
 
 
