@@ -2,6 +2,7 @@ package blockchain
 
 import (
 	"bytes"
+	"encoding/gob"
 	"log"
 )
 
@@ -28,4 +29,37 @@ func (out *TXOutput) Lock(address []byte) {
 
 func (out *TXOutput) IsLockedWithKey(pubKeyHash []byte) bool {
 	return bytes.Compare(out.PubKeyHash, pubKeyHash) == 0
+}
+
+func (out *TXOutput) Serialize() []byte {
+	var result bytes.Buffer
+	encoder := gob.NewEncoder(&result)
+
+	err := encoder.Encode(out)
+	if err != nil {
+		log.Fatalf("Failed to serialize TXOutput: %v", err)
+	}
+	return result.Bytes()
+}
+
+func SerializeOutputs(outputs []TXOutput) []byte {
+    var result bytes.Buffer
+    encoder := gob.NewEncoder(&result)
+
+    err := encoder.Encode(outputs)
+    if err != nil {
+        log.Fatalf("Failed to serialize TXOutputs: %v", err)
+    }
+    return result.Bytes()
+}
+
+func DeserializeTXOutput(data []byte) []TXOutput {
+    var txo []TXOutput
+
+    decoder := gob.NewDecoder(bytes.NewReader(data))
+    err := decoder.Decode(&txo)
+    if err != nil {
+        log.Fatalf("Failed to deserialize TXOutput: %v", err)
+    }
+    return txo
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"log"
 	"math/big"
 )
 
@@ -67,4 +68,14 @@ func checkSum(payload []byte) []byte {
 	secondSha := sha256.Sum256(firstSha[:])
 	return secondSha[:addressChecksumLen]
 
+}
+
+func GetPubKeyFromAddress(address string) []byte {
+    decoded, err := DecodeBase58(address)
+    if err != nil {
+        log.Fatalf("Error decoding address: %s", err.Error())
+    }
+    // Remove version byte and checksum
+    pubKeyHash := decoded[1 : len(decoded)-4]
+    return pubKeyHash
 }

@@ -5,22 +5,23 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 
 	"github.com/boltDb/bolt"
 )
 
+
 const DbFile = "blockchain_%s.db"
+
+// bucket key = blockHash, value = block
 const blocksBucket = "blocks"
 
 type Blockchain struct {
 	tip []byte
 	Db *bolt.DB
 }
-type BlockchainIterator struct {
-	CurrentHash []byte
-	Db          *bolt.DB
-}
+
 
 func NewBlockchain(address string) *Blockchain {
 	var tip []byte
@@ -40,6 +41,9 @@ func NewBlockchain(address string) *Blockchain {
 		if bucket == nil {
 		
 			cbtx := NewCoinbaseTX(address, "Genesis block transaction data")
+			
+			
+		
 			genesisBlock := NewGenesisBlock(cbtx)
 			bucket, err := tx.CreateBucket([]byte(blocksBucket))
 			if err != nil {
@@ -60,10 +64,12 @@ func NewBlockchain(address string) *Blockchain {
 
 		return nil
 	})
+	bc := &Blockchain{tip: tip, Db: Db}
 
-	return &Blockchain{tip: tip, Db: Db}
+	return bc
 }
 
+// add block with empty Transaction to blockchain
 func (b *Blockchain) AddBlock(data string) {
 	var lastHash []byte
 
@@ -81,7 +87,7 @@ func (b *Blockchain) AddBlock(data string) {
 		log.Fatalf("Error adding block: %s", err.Error())
 	}
 
-	newBlock := NewBlock(data, lastHash, []*Transaction{})
+	newBlock := NewBlock([]*Transaction{}, lastHash)
 
 	err = b.Db.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(blocksBucket))
@@ -102,7 +108,41 @@ func (b *Blockchain) AddBlock(data string) {
 }
 
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block{
-	return nil
+	var lastHash []byte
+
+	for _, tx := range transactions {
+		if !bc.VerifyTransactions(tx) {
+			log.Panic("Invalid transaction")
+		}
+	}
+
+	err := bc.Db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+
+		return nil
+	})
+
+	if err != nil {
+		log.Fatalf("Error getting last hash: %s", err.Error())
+	}
+
+	newBlock := NewBlock(transactions, lastHash)
+
+	err = bc.Db.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(blocksBucket))
+		err := bucket.Put(newBlock.Hash, newBlock.Serialize())
+		if err != nil {
+			return err
+		}
+		err = bucket.Put([]byte("l"), newBlock.Hash)
+		if err != nil {
+			return err
+		}
+		bc.tip = newBlock.Hash
+		return nil
+	})
+	return newBlock
 }
 
 func (bc *Blockchain) SignTransaction(tx *Transaction, privKey ecdsa.PrivateKey) {
@@ -126,6 +166,7 @@ func (bc *Blockchain) VerifyTransactions(transaction *Transaction) bool {
 	}
 
 	
+	
 	prevTXs := make(map[string]Transaction)
 
 	for _, in := range transaction.Vin {
@@ -147,6 +188,8 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 		block := bci.Next()
 
 		for _, tx := range block.Transactions {
+			fmt.Printf("tx.ID: %x\n", tx.ID)
+			fmt.Printf("ID: %x\n", ID)
 			if bytes.Compare(tx.ID, ID) == 0 {
 				return *tx, nil
 			}
@@ -157,7 +200,7 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 		}
 	}
 
-	return Transaction{}, errors.New("Transaction is not found")
+	return Transaction{}, errors.New("Transaction not found")
 }
 
 func (bc *Blockchain) Iterator() *BlockchainIterator {
@@ -168,26 +211,10 @@ func (bc *Blockchain) Iterator() *BlockchainIterator {
 }
 
 
-func (bci *BlockchainIterator) Next() *Block {
-	block := &Block{}
-	err := bci.Db.View(func(tx *bolt.Tx) error {
-
-		bucket := tx.Bucket([]byte(blocksBucket))
-		encodedBlock := bucket.Get(bci.CurrentHash)
-		block = Deserialize(encodedBlock)
-		return nil
-	})
-
-	if err != nil {
-		log.Fatalf("error getting next: %s", err.Error())
-	}
-
-	bci.CurrentHash = block.PrevBlockHash
-	return block
-}
 
 
-func (b *Blockchain) FindUnspentTransactions(address string) []Transaction {
+
+func (b *Blockchain) FindUnspentTransactionsByAddress(address string) []Transaction {
 	unspentTxs := []Transaction{}
 	spentTxo := make(map[string][]int)
 	bci := b.Iterator()
@@ -211,7 +238,7 @@ func (b *Blockchain) FindUnspentTransactions(address string) []Transaction {
 
 				}
 
-				if otx.IsLockedWithKey([]byte(address)) {
+				if otx.IsLockedWithKey(GetPubKeyFromAddress(address)) {
 					unspentTxs = append(unspentTxs, *tx)
 				}
 			}
@@ -238,28 +265,53 @@ func (b *Blockchain) FindUnspentTransactions(address string) []Transaction {
 }
 
 
-func (b *Blockchain) FindUTXO(address string) []TXOutput{
-	txOutputs := []TXOutput{}
-	unspentTx := b.FindUnspentTransactions(address)
+func (b *Blockchain) FindAllUnspentUTXO() map[string][]TXOutput {
+	UTXO := make(map[string][]TXOutput)
+	spentTXOs := make(map[string][]int)
+	bci := b.Iterator()
 
-	for _, tx := range unspentTx {
-		for _, output := range tx.Vout {
+	for {
+		block := bci.Next()
 
-			if output.IsLockedWithKey([]byte(address)) {
-				txOutputs = append(txOutputs, output)
+		for _, tx := range block.Transactions {
+			txID := hex.EncodeToString(tx.ID)
+
+		Outputs:
+			for outIdx, out := range tx.Vout {
+				// Was the output spent?
+				if spentTXOs[txID] != nil {
+					for _, spentOutIdx := range spentTXOs[txID] {
+						if spentOutIdx == outIdx {
+							continue Outputs
+						}
+					}
+				}
+
+				outs := UTXO[txID]
+				outs = append(outs, out)
+				UTXO[txID] = outs
 			}
 
+			if tx.IsCoinbase() == false {
+				for _, in := range tx.Vin {
+					inTxID := hex.EncodeToString(in.Txid)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
+				}
+			}
 		}
 
+		if len(block.PrevBlockHash) == 0 {
+			break
+		}
 	}
 
-	return txOutputs
+	return UTXO
 }
 
 
 func (bc *Blockchain) FindSpendableOutputs(address string, amount int) (int, map[string][]int) {
 	unspentOutputs := make(map[string][]int)
-	unspentTXs := bc.FindUnspentTransactions(address)
+	unspentTXs := bc.FindUnspentTransactionsByAddress(address)
 	accumulated := 0
 
 	Work:
@@ -267,7 +319,7 @@ func (bc *Blockchain) FindSpendableOutputs(address string, amount int) (int, map
 			txID := hex.EncodeToString(tx.ID)
 
 			for outIdx, out := range tx.Vout {
-				if out.IsLockedWithKey([]byte(address)) && accumulated < amount {
+				if out.IsLockedWithKey(GetPubKeyFromAddress(address)) && accumulated < amount {
 					accumulated += out.Value
 					unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
 

@@ -11,24 +11,53 @@ type CLIHandler struct {
 	Bc *blockchain.Blockchain
 }
 
-func NewCLIHandler(bc *blockchain.Blockchain) *CLIHandler {
-	return &CLIHandler{Bc: bc}
+func NewCLIHandler() *CLIHandler {
+	return &CLIHandler{Bc: nil}
+}
+
+func (cli *CLIHandler) CreateBlockChain(address string) {
+	if address == "" {
+		fmt.Println("Endereço da carteira não pode ser vazio")
+		return
+	}
+	bc := blockchain.NewBlockchain(address)
+	cli.Bc = bc
+	utxpSet := blockchain.NewUTXOSet(bc)
+	utxpSet.Reindex()
+	fmt.Printf("Blockchain criada com sucesso! Endereço: %s\n", address)
 }
 
 func (cli *CLIHandler) AddBlock(data string) {
+	if cli.Bc == nil {
+		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
+		return
+	}
 	cli.Bc.AddBlock(data)
 	fmt.Printf("Bloco adicionado com sucesso: %s\n", data)
 }
 
 
+
 func (cli *CLIHandler) PrintChain() {
+	if cli.Bc == nil {
+		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
+		return
+	}
 	bci := cli.Bc.Iterator()
 
 	for {
 		block := bci.Next()
 
 		fmt.Printf("Prev. hash: %x\n", block.PrevBlockHash)
-		fmt.Printf("Data: %s\n", block.Data)
+		for _, tx := range block.Transactions {
+			fmt.Printf("Transaction ID: %x\n", tx.ID)
+			for _, vin := range tx.Vin {
+				fmt.Printf("  Input - TXID: %x, Out: %d, Signature: %x\n", vin.Txid, vin.Vout, vin.Signature)
+			}
+			for _, vout := range tx.Vout {
+				fmt.Printf("  Output - Value: %d, PubKeyHash: %x\n", vout.Value, vout.PubKeyHash)
+			}
+		}
 		fmt.Printf("Hash: %x\n", block.Hash)
 		pow := blockchain.NewProofOfWork(block)
 		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
@@ -42,11 +71,17 @@ func (cli *CLIHandler) PrintChain() {
 
 
 func (cli *CLIHandler) GetBalance(address string){
+	if cli.Bc == nil {
+		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
+		return
+	}
 	if address == "" {
 		fmt.Println("Endereço da carteira não pode ser vazio")
 		return
 	}
-	utxos := cli.Bc.FindUTXO(address)
+	utxoset := blockchain.NewUTXOSet(cli.Bc)
+	pubkey := blockchain.GetPubKeyFromAddress(address)
+	utxos := utxoset.FindUTXO(pubkey)
 
 	balance := 0
 
@@ -59,6 +94,10 @@ func (cli *CLIHandler) GetBalance(address string){
 }
 
 func (cli *CLIHandler) Send(from, to string, amount int) {
+	if cli.Bc == nil {
+		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
+		return
+	}
 	if from == "" || to == "" {
 		fmt.Println("Endereço da carteira não pode ser vazio")
 		return
@@ -68,24 +107,25 @@ func (cli *CLIHandler) Send(from, to string, amount int) {
 		return
 	}
 	
-	wallets, err := blockchain.NewWallets("node1")
-	if  err != nil {
-			panic(err)
-	}
-	wallet := wallets.GetWallet(from)
-	tx := blockchain.NewTransaction(&wallet, to, amount, cli.Bc)
+	utxoset := blockchain.NewUTXOSet(cli.Bc)
+	
+	tx := blockchain.NewUTXOTransaction(from, to, amount, utxoset)
+	
 	if tx == nil {
 		log.Fatalf("Erro ao criar transação")
 		return
 	}
 	cbtx := blockchain.NewCoinbaseTX(from, "award")
-	cli.Bc.MineBlock([]*blockchain.Transaction{tx, cbtx})
+	newBlock := cli.Bc.MineBlock([]*blockchain.Transaction{tx, cbtx})
+	
+	utxoset.Update(newBlock)
 	fmt.Printf("Transação enviada de %s para %s no valor de %d\n", from, to, amount)
 	
 }
 
 
 func (cli *CLIHandler) CreateWallet() {
+	
 	node := "node1"
 	wallets, err := blockchain.NewWallets(node)
 	if err != nil {
@@ -95,4 +135,13 @@ func (cli *CLIHandler) CreateWallet() {
 	address := wallets.CreateWallet()
 	wallets.SaveToFile(node)
 	fmt.Printf("Endereço da nova carteira: %s\n", address)
+}
+
+func (cli *CLIHandler) ReindexUTXO() {
+
+	UTXOSet := blockchain.UTXOSet{cli.Bc}
+	UTXOSet.Reindex()
+
+	count := UTXOSet.CountTransactions()
+	fmt.Printf("Done! There are %d transactions in the UTXO set.\n", count)
 }

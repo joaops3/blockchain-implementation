@@ -29,7 +29,6 @@ func NewProofOfWork(block *Block) *ProofOfWork {
 
 func (p *ProofOfWork) prepareData(nonce int64) []byte{
 	data := append([]byte{}, p.block.PrevBlockHash...)
-	data = append(data, p.block.Data...)
 	data = append(data, p.block.HashTransactions()...)
 	data = append(data, utils.IntToHex(p.block.Timestamp)...)
 	data = append(data, utils.IntToHex(int64(targetBits))...)

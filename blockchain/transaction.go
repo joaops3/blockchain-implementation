@@ -1,9 +1,11 @@
 package blockchain
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/gob"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -28,7 +30,7 @@ func NewCoinbaseTX(to, data string) *Transaction {
 		Txid: 	[]byte{},
 		Vout: 	-1,
 		Signature: nil,
-		PubKey: []byte(to),
+		PubKey: []byte(data),
 	}
 	txOut :=  *NewTXOutput(10, to)
 
@@ -42,15 +44,25 @@ func NewCoinbaseTX(to, data string) *Transaction {
 	return tx
 }
 
-
-func NewTransaction(wallet *Wallet, to string, amount int, bc *Blockchain) *Transaction{
+ 
+func NewUTXOTransaction(from string, to string, amount int, UTXOSet *UTXOSet) *Transaction{
 	inputs := []TXInput{}
 	outputs := []TXOutput{}
 
-	acc, validOutputs := bc.FindSpendableOutputs(string(wallet.PublicKey), amount)
-
+	wallets, err := NewWallets("node1")
+	if err != nil {
+		log.Fatalf("Error wallets: %s", err.Error())
+	}
+	wallet := wallets.GetWallet(from)
+	if wallet.PublicKey == nil {
+		log.Fatalf("Wallet not found: %s", from)
+		return nil
+	}
+	pubKeyHash := HashPubKey(wallet.PublicKey)
+	acc, validOutputs := UTXOSet.FindSpendableOutputs(pubKeyHash, amount)
+	
 	if acc < amount {
-		log.Panic("Not enough funds")
+		log.Fatalf("Not enough funds")
 		return nil
 	}
 
@@ -76,7 +88,7 @@ func NewTransaction(wallet *Wallet, to string, amount int, bc *Blockchain) *Tran
 
 	if acc > amount {
 		// Change
-		outputs = append(outputs,  *NewTXOutput(acc - amount, string(wallet.GetAddress())))
+		outputs = append(outputs,  *NewTXOutput(acc - amount, from))
 	}
 
 	tx := &Transaction{
@@ -85,23 +97,25 @@ func NewTransaction(wallet *Wallet, to string, amount int, bc *Blockchain) *Tran
 		Vout: outputs,
 	}
 	tx.ID = tx.Hash()
-	bc.SignTransaction(tx, DeserializePrivateKey(wallet.PrivateKey))
+	UTXOSet.Blockchain.SignTransaction(tx, DeserializePrivateKey(wallet.PrivateKey))
 	return tx
 }
 
 func (tx *Transaction) Hash() []byte {
-	var hash [32]byte
+    var hash [32]byte
+    var encoded bytes.Buffer
 
-	txCopy := *tx
-	txCopy.ID = []byte{}
+    enc := gob.NewEncoder(&encoded)
+    err := enc.Encode(tx)
+    if err != nil {
+        log.Fatalf("Error encoding transaction: %s", err.Error())
+    }
 
-	hash = sha256.Sum256([]byte("1"))
-
-	return hash[:]
+    hash = sha256.Sum256(encoded.Bytes())
+    return hash[:]
 }
-
 func (coinbase *Transaction) IsCoinbase() bool {
-	return len(coinbase.Vin) == 1 && coinbase.Vin[0].Txid == nil && coinbase.Vin[0].Vout == -1
+	return len(coinbase.Vin) == 1 && len(coinbase.Vin[0].Txid) == 0 && coinbase.Vin[0].Vout == -1
 }
 
 func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {

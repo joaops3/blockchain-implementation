@@ -10,17 +10,15 @@ import (
 
 type Block struct {
 	Timestamp     int64
-	Data          []byte
 	PrevBlockHash []byte
 	Hash          []byte
 	Transactions []*Transaction
 	Nonce int
 }
 
-func NewBlock(data string,   prevBlockHash []byte, transactions []*Transaction,) *Block {
+func NewBlock( transactions []*Transaction, prevBlockHash []byte) *Block {
 	block := &Block{
 		Timestamp:     time.Now().Unix(), 
-		Data:          []byte(data),
 		PrevBlockHash: prevBlockHash,
 		Hash:          []byte{}, 
 		Nonce: 0,
@@ -34,7 +32,7 @@ func NewBlock(data string,   prevBlockHash []byte, transactions []*Transaction,)
 }
 
 func NewGenesisBlock(coinbaseTx *Transaction) *Block {
-	return NewBlock("Genesis Block", []byte{}, []*Transaction{coinbaseTx})
+	return NewBlock( []*Transaction{coinbaseTx}, []byte{})
 }
 
 
@@ -46,7 +44,7 @@ func (b *Block) Serialize() []byte {
 	err := enconder.Encode(b)
 	if err != nil {
 		log.Fatalf("error serializing block: %s", err.Error())
-		panic(err)
+	
 	}
 	return result.Bytes()
 }
@@ -58,7 +56,7 @@ func Deserialize(data []byte) *Block {
 	err := decoder.Decode(block)
 	if err != nil {
 		log.Fatalf("error deserializing block: %s", err.Error())
-		panic(err)
+	
 	}
 	return block
 }
