@@ -1,6 +1,6 @@
 # Blockchain implementation
 
-This project showcases a simplified implementation of a blockchain, inspired by the Bitcoin protocol, Following this <a href="https://jeiwan.net/posts/building-blockchain-in-go-part-1/"> Article </a>.
+This project demonstrates a implementation of a blockchain for practicing concepts, inspired by the Bitcoin protocol, Following this <a href="https://jeiwan.net/posts/building-blockchain-in-go-part-1/"> Article </a>.
 
 # how to run ?
 
