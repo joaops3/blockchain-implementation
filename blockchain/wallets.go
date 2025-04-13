@@ -32,7 +32,7 @@ func (ws *Wallets) CreateWallet() string {
 	return string(address)
 }
 
-// GetAddresses returns an array of addresses stored in the wallet file
+
 func (ws *Wallets) GetAddresses() []string {
 	var addresses []string
 

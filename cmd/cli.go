@@ -19,9 +19,9 @@ var amount int
 var cliCmd = &cobra.Command{
 	Use:   "cli",
 	Short: "Interface de linha de comando para a blockchain",
-	Long: `Adicionar a desc longa aqui`,
+	Long: ``,
 		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			// Pode usar esse hook para setups comuns
+			
 		},
 		PersistentPostRun: func(cmd *cobra.Command, args []string) {
 			defer cliHandler.Bc.Db.Close()
