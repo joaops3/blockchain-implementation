@@ -15,7 +15,7 @@ type Wallets struct {
 	Wallets map[string]*Wallet
 }
 
-// NewWallets creates Wallets and fills it from a file if it exists
+
 func NewWallets(nodeID string) (*Wallets, error) {
 	ws := &Wallets{Wallets: make(map[string]*Wallet)}
 	if err := ws.loadFromFile(nodeID); err != nil {
@@ -24,7 +24,7 @@ func NewWallets(nodeID string) (*Wallets, error) {
 	return ws, nil
 }
 
-// CreateWallet adds a Wallet to Wallets
+
 func (ws *Wallets) CreateWallet() string {
 	wallet := NewWallet()
 	address := wallet.GetAddress()
@@ -43,12 +43,12 @@ func (ws *Wallets) GetAddresses() []string {
 	return addresses
 }
 
-// GetWallet returns a Wallet by its address
+
 func (ws Wallets) GetWallet(address string) Wallet {
 	return *ws.Wallets[address]
 }
 
-// LoadFromFile loads wallets from the file
+
 func (ws *Wallets) loadFromFile(nodeID string) error {
 	filePath := getWalletFilePath(nodeID)
 
@@ -70,7 +70,7 @@ func (ws *Wallets) loadFromFile(nodeID string) error {
 	return nil
 }
 
-// SaveToFile saves wallets to a file
+
 func (ws *Wallets) SaveToFile(nodeID string) {
 	var content bytes.Buffer
 	filePath := getWalletFilePath(nodeID)

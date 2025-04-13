@@ -46,10 +46,7 @@ func (p *ProofOfWork) Run() (int, []byte) {
 		data := p.prepareData(int64(nonce))
 
 		hash = sha256.Sum256(data)
-		// only to print hash
-		if math.Remainder(float64(nonce), 100000) == 0 {
-			fmt.Printf("\r%x", hash)
-		}
+		
 		hashInt.SetBytes(hash[:])
 		if hashInt.Cmp(p.target) == -1 {
 			break
