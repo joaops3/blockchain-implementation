@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"blockchain/utils"
 	"bytes"
 	"encoding/gob"
 	"log"
@@ -19,7 +20,7 @@ func NewTXOutput(value int, address string) *TXOutput {
 }
 
 func (out *TXOutput) Lock(address []byte) {
-	pubKeyHash, err := DecodeBase58(string(address))
+	pubKeyHash, err := utils.DecodeBase58(string(address))
 	if err != nil {
 		log.Fatalf("Failed to decode address: %v", err)
 	}

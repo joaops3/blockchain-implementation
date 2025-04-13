@@ -6,10 +6,12 @@ This project showcases a simplified implementation of a blockchain, inspired by 
 
 ```bash
 
-go run main.go cli printChain
+go run main.go cli createWallet
+
+go run main.go cli createBlockchain --address=
+
+go run main.go cli getBalance  --address=
+
+go run main.go cli send --from= --to --amount=
 
 ```
-
-12Q5pnzrQUzun1EtRdjKvbbMou7WUtfSRD6QieC9XTXoE8FQMQJ
-
-124VF1mUyLBL9xUFACAn2gPTMSCxQRGzERgraL3SrzzirfYG8NC

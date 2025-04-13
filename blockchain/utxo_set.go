@@ -1,13 +1,9 @@
 package blockchain
 
 import (
-	"bytes"
-	"encoding/gob"
+	"blockchain/db"
 	"encoding/hex"
-	"errors"
 	"log"
-
-	"github.com/boltDb/bolt"
 )
 
 // bucket key = txid, value = txo
@@ -23,213 +19,123 @@ func NewUTXOSet(bc *Blockchain) *UTXOSet {
 
 // gets all unspent outputs from blockchain, and finally it saves the outputs to the bucket.
 func (u *UTXOSet) Reindex() {
-	db := u.Blockchain.Db
-	bucketName := []byte(utxoBucket)
+	err := u.Blockchain.Db.Update(func(bucket db.WriteBucket) error {
+		_ = bucket.CreateBucketIfNotExists(utxoBucket)
 
-	err := db.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket(bucketName)
-	
-		if b != nil {
-			err := tx.DeleteBucket(bucketName)
+		// limpa bucket
+		_ = bucket.ForEach(utxoBucket, func(k, _ []byte) error {
+			return bucket.Delete(utxoBucket, k)
+		})
+
+		utxos := u.Blockchain.FindAllUnspentUTXO()
+
+		for txID, outs := range utxos {
+			key, err := hex.DecodeString(txID)
 			if err != nil {
 				return err
 			}
-		}
-	
-		_, err := tx.CreateBucket(bucketName)
-		if err != nil {
-			return err
+			if err := bucket.Put(utxoBucket, key, SerializeOutputs(outs)); err != nil {
+				return err
+			}
 		}
 		return nil
 	})
 
 	if err != nil {
-		log.Fatalf("Error reindexing UTXO set: %s", err.Error())
+		log.Fatalf("Error reindexing UTXO set: %s", err)
 	}
-
-	// remover o address futuramente
-	UTXO := u.Blockchain.FindAllUnspentUTXO()
-
-	err = db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(bucketName))
-		if bucket == nil {
-			return errors.New("UTXO bucket not found")
-		}
-		
-		for txID, outs := range UTXO {
-			key, err := hex.DecodeString(string(txID))
-			if err != nil {
-				return err
-			}
-			err = bucket.Put(key, SerializeOutputs(outs))
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-
 }
 
 // get the unspent outputs by address and amount
-func (u UTXOSet) FindSpendableOutputs(pubKeyHash []byte, amount int)(int, map[string][]int){
-	// txid -> [outIdx]
-	unspentOutputs := make(map[string][]int)
-	accumulated := 0
-	
+func (u *UTXOSet) FindSpendableOutputs(pubKeyHash []byte, amount int) (int, map[string][]int) {
+	acc := 0
+	// map[txid][]outidx
+	unspent := make(map[string][]int)
 
-	err := u.Blockchain.Db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(utxoBucket))
-		if bucket == nil {
-			return errors.New("UTXO bucket not found")
-		}
-		cursor := bucket.Cursor()
-		
-		for k, v := cursor.First(); k != nil; k, v = cursor.Next() {
+	_ = u.Blockchain.Db.View(func(bucket db.ReadBucket) error {
+		_ = bucket.ForEach(utxoBucket, func(k, v []byte) error {
 			txID := hex.EncodeToString(k)
 			outs := DeserializeTXOutput(v)
-			for outIdx, out := range outs {
-			
-				
-			
-                if out.IsLockedWithKey(pubKeyHash) && accumulated < amount {
-                    accumulated += out.Value
-                    unspentOutputs[txID] = append(unspentOutputs[txID], outIdx)
-                }
-            }
 
-		}
+			for idx, out := range outs {
+				if out.IsLockedWithKey(pubKeyHash) && acc < amount {
+					acc += out.Value
+					unspent[txID] = append(unspent[txID], idx)
+				}
+			}
+			return nil
+		})
 		return nil
 	})
 
-
-		if err != nil {
-			log.Fatalf("Error finding spendable outputs: %s", err.Error())
-		}
-
-	return accumulated, unspentOutputs
+	return acc, unspent
 }
 
-
 // check balance by address
-func (u UTXOSet) FindUTXO(pubKeyHash []byte) []TXOutput {
-    var UTXOs []TXOutput
-    
+func (u *UTXOSet) FindUTXO(pubKeyHash []byte) []TXOutput {
+	var UTXOs []TXOutput
 
-    err := u.Blockchain.Db.View(func(tx *bolt.Tx) error {
-        b := tx.Bucket([]byte(utxoBucket))
-        c := b.Cursor()
+	_ = u.Blockchain.Db.View(func(bucket db.ReadBucket) error {
+		_ = bucket.ForEach(utxoBucket, func(_, v []byte) error {
+			outs := DeserializeTXOutput(v)
+			for _, out := range outs {
+				if out.IsLockedWithKey(pubKeyHash) {
+					UTXOs = append(UTXOs, out)
+				}
+			}
+			return nil
+		})
+		return nil
+	})
 
-        for k, v := c.First(); k != nil; k, v = c.Next() {
-            outs := DeserializeTXOutput(v)
-			
-            for _, out := range outs {
-                if out.IsLockedWithKey(pubKeyHash) {
-                    UTXOs = append(UTXOs, out)
-                }
-            }
-        }
-
-        return nil
-    })
-	if err != nil {
-		log.Fatalf("Error finding UTXOs: %s", err.Error())
-	}
-    return UTXOs
+	return UTXOs
 }
 
 
 func (u *UTXOSet) Update(block *Block) {
-	err := u.Blockchain.Db.Update(func(txn *bolt.Tx) error {
-		bucket := txn.Bucket([]byte(utxoBucket))
-		if bucket == nil {
-			return errors.New("UTXO bucket not found")
-		}
-	
+	err := u.Blockchain.Db.Update(func(bucket db.WriteBucket) error {
 		for _, tx := range block.Transactions {
-
-			if tx.IsCoinbase() == false {
+			if !tx.IsCoinbase() {
 				for _, vin := range tx.Vin {
-					var updatedOutputs = []TXOutput{}
-					outBytes := bucket.Get(tx.ID)
-
-					if outBytes == nil {
+					outsRaw, err := bucket.Get(utxoBucket, vin.Txid)
+					if err != nil || outsRaw == nil {
 						continue
 					}
-		
-					outs := DeserializeTXOutput(outBytes)
-					for outIdx, out := range outs {
-						if outIdx != vin.Vout {
-							updatedOutputs = append(updatedOutputs, out)
-						}  
+					outs := DeserializeTXOutput(outsRaw)
+
+					var newOuts []TXOutput
+					for idx, out := range outs {
+						if idx != vin.Vout {
+							newOuts = append(newOuts, out)
+						}
 					}
 
-					if len(updatedOutputs) == 0 {
-						err  := bucket.Delete(vin.Txid)
-						if err != nil {
-							return err
-						}
-					}else {
-						var buff bytes.Buffer
-
-						encoder := gob.NewEncoder(&buff)
-						err := encoder.Encode(updatedOutputs)
-						if err != nil {
-							return err
-						}
-
-						err = bucket.Put(vin.Txid, buff.Bytes())
-						if err != nil {
-							return err
-						}
+					if len(newOuts) == 0 {
+						_ = bucket.Delete(utxoBucket, vin.Txid)
+					} else {
+						_ = bucket.Put(utxoBucket, vin.Txid, SerializeOutputs(newOuts))
 					}
 				}
 			}
-		newOutputs := []TXOutput{}
-			for _, out := range tx.Vout {
-				newOutputs = append(newOutputs, out)
-			}
 
-			var buff bytes.Buffer
-
-						encoder := gob.NewEncoder(&buff)
-						err := encoder.Encode(newOutputs)
-						if err != nil {
-							return err
-						}
-
-			err = bucket.Put(tx.ID, buff.Bytes())
-			if err != nil {
-				log.Panic(err)
-			}
+			// adiciona os novos outputs
+			_ = bucket.Put(utxoBucket, tx.ID, SerializeOutputs(tx.Vout))
 		}
-		
 		return nil
 	})
-
 	if err != nil {
-		log.Fatalf("Error updating UTXO set: %s", err.Error())
+		log.Fatalf("Error updating UTXO set: %s", err)
 	}
-
 }
 
-func (u UTXOSet) CountTransactions() int {
-	db := u.Blockchain.Db
-	counter := 0
-
-	err := db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(utxoBucket))
-		c := b.Cursor()
-
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
-			counter++
-		}
-
+func (u *UTXOSet) CountTransactions() int {
+	count := 0
+	_ = u.Blockchain.Db.View(func(bucket db.ReadBucket) error {
+		_ = bucket.ForEach(utxoBucket, func(_, _ []byte) error {
+			count++
+			return nil
+		})
 		return nil
 	})
-	if err != nil {
-		log.Panic(err)
-	}
-
-	return counter
+	return count
 }

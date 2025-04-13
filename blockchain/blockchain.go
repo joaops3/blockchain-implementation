@@ -1,14 +1,13 @@
 package blockchain
 
 import (
+	"blockchain/db"
 	"bytes"
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
-
-	"github.com/boltDb/bolt"
 )
 
 
@@ -19,7 +18,7 @@ const blocksBucket = "blocks"
 
 type Blockchain struct {
 	tip []byte
-	Db *bolt.DB
+	Db db.Storage
 }
 
 
@@ -27,43 +26,42 @@ func NewBlockchain(address string) *Blockchain {
 	var tip []byte
 	
 
-	Db, err := bolt.Open(DbFile, 0600, nil)
+	Db, err := db.NewBoltStorage(DbFile)
 
 	if err != nil {
 		log.Fatalf("Error opening database: %s", err.Error())
 	}
 
-	err = Db.Update(func(tx *bolt.Tx) error {
-
-		bucket := tx.Bucket([]byte(blocksBucket))
+	err = Db.Update(func(tx db.WriteBucket) error {
+		 
+		tx.CreateBucketIfNotExists(blocksBucket)
 		
 
-		if bucket == nil {
-		
-			cbtx := NewCoinbaseTX(address, "Genesis block transaction data")
-			
-			
-		
-			genesisBlock := NewGenesisBlock(cbtx)
-			bucket, err := tx.CreateBucket([]byte(blocksBucket))
-			if err != nil {
-				log.Fatalf("Error creating bucket: %s", err.Error())
-			}
-			err = bucket.Put(genesisBlock.Hash, genesisBlock.Serialize())
-			if err != nil {
-				log.Fatalf("Error put bucket: %s", err.Error())
-			}
-			err = bucket.Put([]byte("l"), genesisBlock.Hash)
-			if err != nil {
-				log.Fatalf("Error put 1 bucket: %s", err.Error())
-			}
-
-		}else {
-			tip = bucket.Get([]byte("l"))
+		lastHash, err := tx.Get(blocksBucket, []byte("l"))
+		if err == nil && len(lastHash) > 0 {
+			tip = lastHash
+			return nil
 		}
 
+		cbtx := NewCoinbaseTX(address, "Genesis block transaction data")
+		genesis := NewGenesisBlock(cbtx)
+
+		err = tx.Put(blocksBucket, genesis.Hash, genesis.Serialize())
+		if err != nil {
+			return err
+		}
+		err = tx.Put(blocksBucket, []byte("l"), genesis.Hash)
+		if err != nil {
+			return err
+		}
+
+		tip = genesis.Hash
 		return nil
 	})
+
+	if err != nil {
+		log.Fatalf("Failed to create blockchain: %v", err)
+	}
 	bc := &Blockchain{tip: tip, Db: Db}
 
 	return bc
@@ -73,13 +71,14 @@ func NewBlockchain(address string) *Blockchain {
 func (b *Blockchain) AddBlock(data string) {
 	var lastHash []byte
 
-	err := b.Db.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(blocksBucket))
-		if bucket == nil {
-			return errors.New("Bucket not found")
-		}
-		lastHash = bucket.Get([]byte("l"))
+	err := b.Db.View(func(tx db.ReadBucket) error {
+	
+		lastHashDb, err := tx.Get(blocksBucket, []byte("l"))
 
+		if err != nil {
+			return err
+		}
+		lastHash = lastHashDb
 		return nil
 	})
 
@@ -89,16 +88,13 @@ func (b *Blockchain) AddBlock(data string) {
 
 	newBlock := NewBlock([]*Transaction{}, lastHash)
 
-	err = b.Db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(blocksBucket))
-		if bucket == nil {
-			log.Fatalf("Bucket not found")
-		}
-		err := bucket.Put(newBlock.Hash, newBlock.Serialize())
+	err = b.Db.Update(func(tx db.WriteBucket) error {
+		
+		err := tx.Put(blocksBucket, newBlock.Hash, newBlock.Serialize())
 		if err != nil {
 			return err
 		}
-		err = bucket.Put([]byte("l"), newBlock.Hash)
+		err = tx.Put(blocksBucket, []byte("l"), newBlock.Hash)
 		if err != nil {
 			return err
 		}
@@ -116,10 +112,13 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block{
 		}
 	}
 
-	err := bc.Db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(blocksBucket))
-		lastHash = b.Get([]byte("l"))
-
+	err := bc.Db.View(func(tx db.ReadBucket) error {
+	
+		lastHashDb, err := tx.Get(blocksBucket, []byte("l"))
+		if err != nil {
+			return err
+		}
+		lastHash = lastHashDb
 		return nil
 	})
 
@@ -129,13 +128,12 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block{
 
 	newBlock := NewBlock(transactions, lastHash)
 
-	err = bc.Db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(blocksBucket))
-		err := bucket.Put(newBlock.Hash, newBlock.Serialize())
+	err = bc.Db.Update(func(tx db.WriteBucket) error {
+		err := tx.Put(blocksBucket, newBlock.Hash, newBlock.Serialize())
 		if err != nil {
 			return err
 		}
-		err = bucket.Put([]byte("l"), newBlock.Hash)
+		err = tx.Put(blocksBucket, []byte("l"), newBlock.Hash)
 		if err != nil {
 			return err
 		}

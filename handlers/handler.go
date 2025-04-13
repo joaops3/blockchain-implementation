@@ -7,15 +7,15 @@ import (
 	"strconv"
 )
 
-type CLIHandler struct {
+type Handler struct {
 	Bc *blockchain.Blockchain
 }
 
-func NewCLIHandler() *CLIHandler {
-	return &CLIHandler{Bc: nil}
+func NewHandler() *Handler {
+	return &Handler{Bc: nil}
 }
 
-func (cli *CLIHandler) CreateBlockChain(address string) {
+func (cli *Handler) CreateBlockChain(address string) {
 	if address == "" {
 		fmt.Println("Endereço da carteira não pode ser vazio")
 		return
@@ -27,7 +27,7 @@ func (cli *CLIHandler) CreateBlockChain(address string) {
 	fmt.Printf("Blockchain criada com sucesso! Endereço: %s\n", address)
 }
 
-func (cli *CLIHandler) AddBlock(data string) {
+func (cli *Handler) AddBlock(data string) {
 	if cli.Bc == nil {
 		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
 		return
@@ -38,7 +38,7 @@ func (cli *CLIHandler) AddBlock(data string) {
 
 
 
-func (cli *CLIHandler) PrintChain() {
+func (cli *Handler) PrintChain() {
 	if cli.Bc == nil {
 		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
 		return
@@ -70,7 +70,7 @@ func (cli *CLIHandler) PrintChain() {
 }
 
 
-func (cli *CLIHandler) GetBalance(address string){
+func (cli *Handler) GetBalance(address string){
 	if cli.Bc == nil {
 		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
 		return
@@ -93,7 +93,7 @@ func (cli *CLIHandler) GetBalance(address string){
 	fmt.Printf("Balance of '%s': %d\n", address, balance)
 }
 
-func (cli *CLIHandler) Send(from, to string, amount int) {
+func (cli *Handler) Send(from, to string, amount int) {
 	if cli.Bc == nil {
 		fmt.Println("Blockchain ainda não foi criada. Use 'createBlockchain' antes.")
 		return
@@ -124,7 +124,7 @@ func (cli *CLIHandler) Send(from, to string, amount int) {
 }
 
 
-func (cli *CLIHandler) CreateWallet() {
+func (cli *Handler) CreateWallet() {
 	
 	node := "node1"
 	wallets, err := blockchain.NewWallets(node)
@@ -137,7 +137,7 @@ func (cli *CLIHandler) CreateWallet() {
 	fmt.Printf("Endereço da nova carteira: %s\n", address)
 }
 
-func (cli *CLIHandler) ReindexUTXO() {
+func (cli *Handler) ReindexUTXO() {
 
 	UTXOSet := blockchain.UTXOSet{cli.Bc}
 	UTXOSet.Reindex()

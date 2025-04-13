@@ -1,6 +1,7 @@
 package blockchain
 
 import (
+	"blockchain/utils"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -53,7 +54,7 @@ func (w *Wallet) GetAddress() []byte {
     checkSum := checkSum(versionedPayload)
 
     fullPayload := append(versionedPayload, checkSum...)
-    address := EncodeBase58(fullPayload)
+    address := utils.EncodeBase58(fullPayload)
     return []byte(address)
 }
 
@@ -71,7 +72,7 @@ func checkSum(payload []byte) []byte {
 }
 
 func GetPubKeyFromAddress(address string) []byte {
-    decoded, err := DecodeBase58(address)
+    decoded, err := utils.DecodeBase58(address)
     if err != nil {
         log.Fatalf("Error decoding address: %s", err.Error())
     }

@@ -1,6 +1,3 @@
-/*
-Copyright © 2025 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -12,7 +9,7 @@ import (
 
 
 
-var cliHandler *handlers.CLIHandler
+var cliHandler *handlers.Handler
 
 var address string
 var from string
@@ -93,7 +90,7 @@ var CountTransactionsCmd = &cobra.Command{
 
 func init() {
 	
-	cliHandler = handlers.NewCLIHandler()
+	cliHandler = handlers.NewHandler()
 	cliHandler.CreateBlockChain("12Q5pnzrQUzun1EtRdjKvbbMou7WUtfSRD6QieC9XTXoE8FQMQJ")
 	cliCmd.AddCommand(addBlockCmd)
 	cliCmd.AddCommand(printChainCmd)

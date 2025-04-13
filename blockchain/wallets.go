@@ -17,22 +17,19 @@ type Wallets struct {
 
 // NewWallets creates Wallets and fills it from a file if it exists
 func NewWallets(nodeID string) (*Wallets, error) {
-	wallets := Wallets{}
-	wallets.Wallets = make(map[string]*Wallet)
-
-	err := wallets.LoadFromFile(nodeID)
-
-	return &wallets, err
+	ws := &Wallets{Wallets: make(map[string]*Wallet)}
+	if err := ws.loadFromFile(nodeID); err != nil {
+		return nil, err
+	}
+	return ws, nil
 }
 
 // CreateWallet adds a Wallet to Wallets
 func (ws *Wallets) CreateWallet() string {
 	wallet := NewWallet()
-	address := fmt.Sprintf("%s", wallet.GetAddress())
-	
-	ws.Wallets[address] = wallet
-
-	return address
+	address := wallet.GetAddress()
+	ws.Wallets[string(address)] = wallet
+	return string(address)
 }
 
 // GetAddresses returns an array of addresses stored in the wallet file
@@ -52,42 +49,42 @@ func (ws Wallets) GetWallet(address string) Wallet {
 }
 
 // LoadFromFile loads wallets from the file
-func (ws *Wallets) LoadFromFile(nodeID string) error {
-    walletFile := fmt.Sprintf(walletFile, nodeID)
+func (ws *Wallets) loadFromFile(nodeID string) error {
+	filePath := getWalletFilePath(nodeID)
 
-    fileContent, err := os.ReadFile(walletFile)
-    if err != nil {
-        if os.IsNotExist(err) {
-            // File does not exist, initialize an empty Wallets object
-            *ws = Wallets{}
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// arquivo ainda não existe — tudo certo
 			ws.Wallets = make(map[string]*Wallet)
-            return nil
-        }
-        return err
-    }
+			return nil
+		}
+		return fmt.Errorf("failed to read wallet file: %w", err)
+	}
 
-    decoder := gob.NewDecoder(bytes.NewReader(fileContent))
-    err = decoder.Decode(ws)
-    if err != nil {
-        log.Panic(err)
-    }
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+	if err := decoder.Decode(ws); err != nil {
+		return fmt.Errorf("failed to decode wallet data: %w", err)
+	}
 
-    return nil
+	return nil
 }
 
 // SaveToFile saves wallets to a file
-func (ws Wallets) SaveToFile(nodeID string) {
-    var content bytes.Buffer
-    walletFile := fmt.Sprintf(walletFile, nodeID)
+func (ws *Wallets) SaveToFile(nodeID string) {
+	var content bytes.Buffer
+	filePath := getWalletFilePath(nodeID)
 
-    encoder := gob.NewEncoder(&content)
-    err := encoder.Encode(ws)
-    if err != nil {
-        log.Panic(err)
-    }
+	encoder := gob.NewEncoder(&content)
+	if err := encoder.Encode(ws); err != nil {
+		log.Panicf("failed to encode wallets: %v", err)
+	}
 
-    err = os.WriteFile(walletFile, content.Bytes(), 0644)
-    if err != nil {
-        log.Panic(err)
-    }
+	if err := os.WriteFile(filePath, content.Bytes(), 0644); err != nil {
+		log.Panicf("failed to write wallet file: %v", err)
+	}
+}
+
+func getWalletFilePath(nodeID string) string {
+	return fmt.Sprintf(walletFile, nodeID)
 }

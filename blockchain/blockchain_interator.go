@@ -1,22 +1,24 @@
 package blockchain
 
 import (
+	"blockchain/db"
 	"log"
-
-	"github.com/boltDb/bolt"
 )
 
 type BlockchainIterator struct {
 	CurrentHash []byte
-	Db          *bolt.DB
+	Db          db.Storage
 }
 
 func (bci *BlockchainIterator) Next() *Block {
 	block := &Block{}
-	err := bci.Db.View(func(tx *bolt.Tx) error {
+	err := bci.Db.View(func(tx db.ReadBucket) error {
 
-		bucket := tx.Bucket([]byte(blocksBucket))
-		encodedBlock := bucket.Get(bci.CurrentHash)
+	
+		encodedBlock, err := tx.Get(blocksBucket, bci.CurrentHash)
+		if err != nil {
+			log.Fatalf("error getting block: %s", err.Error())
+		}
 		block = Deserialize(encodedBlock)
 		return nil
 	})
